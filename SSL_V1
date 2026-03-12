@@ -1,0 +1,216 @@
+#include <Wire.h>
+#include <MPU6050.h>
+
+MPU6050 mpu;
+
+// Flex pins
+const int thumbPin  = 34;
+const int indexPin  = 35;
+const int middlePin = 36;
+const int ringPin   = 33;
+const int pinkyPin  = 25;
+
+int thumb,indexFinger,middle,ring,pinky;
+int16_t ax,ay,az,gx,gy,gz;
+
+void setup()
+{
+Serial.begin(115200);
+Wire.begin(21,22);
+mpu.initialize();
+
+Serial.println("Gesture,Thumb,Index,Middle,Ring,Pinky,AX,AY,AZ");
+}
+
+void loop()
+{
+
+Serial.println("Reading sensors for 2 seconds...");
+
+unsigned long startTime = millis();
+
+long thumbSum=0,indexSum=0,middleSum=0,ringSum=0,pinkySum=0;
+long axSum=0,aySum=0,azSum=0;
+
+int samples=0;
+
+
+// READ FOR 2 SECONDS
+while(millis()-startTime < 2000)
+{
+
+thumb       = analogRead(thumbPin);
+indexFinger = analogRead(indexPin);
+middle      = analogRead(middlePin);
+ring        = analogRead(ringPin);
+pinky       = analogRead(pinkyPin);
+
+mpu.getMotion6(&ax,&ay,&az,&gx,&gy,&gz);
+
+thumbSum+=thumb;
+indexSum+=indexFinger;
+middleSum+=middle;
+ringSum+=ring;
+pinkySum+=pinky;
+
+axSum+=ax;
+aySum+=ay;
+azSum+=az;
+
+samples++;
+
+delay(20);
+
+}
+
+
+// AVERAGES
+thumb       = thumbSum/samples;
+indexFinger = indexSum/samples;
+middle      = middleSum/samples;
+ring        = ringSum/samples;
+pinky       = pinkySum/samples;
+
+ax=axSum/samples;
+ay=aySum/samples;
+az=azSum/samples;
+
+
+// ----------------------
+// ORIENTATION DETECTION
+// ----------------------
+
+String orientation="UNKNOWN";
+
+if(ax >15000 && ax <17000 && ay >-1000 && ay <2500)
+orientation="HORIZONTAL";
+
+else if(ax >15000 && ax <17000 && ay <-2000)
+orientation="TILT_DOWN";
+
+else if(ax >2000 && ax <6000 && ay <-15000)
+orientation="VERTICAL";
+
+
+// ----------------------
+// GESTURE DETECTION
+// ----------------------
+
+String gesture="Unknown";
+
+
+// A
+if(orientation=="HORIZONTAL" &&
+thumb >1950 && thumb <1985 &&
+indexFinger >1965 && indexFinger <1985 &&
+middle >1935 && middle <1955 &&
+ring >1650 && ring <1880 &&
+pinky >2290 && pinky <2310)
+{
+gesture="A";
+}
+
+
+// AA
+else if(orientation=="HORIZONTAL" &&
+thumb >1930 && thumb <1970 &&
+indexFinger >4000 &&
+middle >1935 && middle <1965 &&
+ring >3700 &&
+pinky >4000)
+{
+gesture="AA";
+}
+
+
+// AE
+else if(orientation=="TILT_DOWN" &&
+thumb >1950 && thumb <1970 &&
+indexFinger >4000 &&
+middle >4000 &&
+ring >3850 &&
+pinky >4000 &&
+ax >14800 && ax <15200 &&
+ay >-6500 && ay <-5500 &&
+az >-4400 && az <-3800)
+{
+gesture="AE";
+}
+
+
+// i
+else if(orientation=="TILT_DOWN" &&
+thumb >1950 && thumb <1980 &&
+indexFinger >4000 &&
+middle >3800 &&
+ring >3800 &&
+pinky >4000)
+{
+gesture="i";
+}
+
+
+// U
+else if(orientation=="VERTICAL" &&
+thumb >1950 && thumb <1970 &&
+indexFinger >1960 && indexFinger <1980 &&
+middle >4000 &&
+ring >4000 &&
+pinky >4000 &&
+ay <-15000)
+{
+gesture="U";
+}
+
+
+// E
+else if(orientation=="TILT_DOWN" &&
+thumb >1950 && thumb <1970 &&
+indexFinger >4000 &&
+middle >2600 &&
+middle <3400 &&
+ring >3700 &&
+pinky >4000)
+{
+gesture="E";
+}
+
+
+
+// ----------------------
+// PRINT RESULT
+// ----------------------
+
+Serial.print(gesture);
+Serial.print(",");
+
+Serial.print(thumb);
+Serial.print(",");
+
+Serial.print(indexFinger);
+Serial.print(",");
+
+Serial.print(middle);
+Serial.print(",");
+
+Serial.print(ring);
+Serial.print(",");
+
+Serial.print(pinky);
+Serial.print(",");
+
+Serial.print(ax);
+Serial.print(",");
+
+Serial.print(ay);
+Serial.print(",");
+
+Serial.println(az);
+
+
+// WAIT BEFORE NEXT READ
+Serial.println("Waiting 3 seconds...\n");
+
+delay(3000);
+
+}
