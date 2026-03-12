@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Sinhala Sign Language Glove 3D Dashboard</title>
+
+<!-- Chart.js for finger graphs -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<!-- Three.js for 3D hand -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.155.0/build/three.min.js"></script>
+
+<style>
+body{
+  font-family: Arial;
+  background: #111827;
+  color:white;
+  margin:0;
+  padding:0;
+  text-align:center;
+}
+h1{
+  margin-top:20px;
+  color:#38bdf8;
+}
+.container{
+  display:flex;
+  flex-wrap:wrap;
+  justify-content:center;
+  gap:40px;
+  margin:20px;
+}
+.card{
+  background:#1f2937;
+  padding:20px;
+  border-radius:10px;
+  width:350px;
+  box-shadow:0 0 20px #000;
+}
+.value{
+  font-size:22px;
+  color:#38bdf8;
+}
+.gesture{
+  font-size:70px;
+  color:#22c55e;
+  margin:10px 0;
+}
+#handContainer{
+  width:300px;
+  height:300px;
+  margin:auto;
+  border-radius:20px;
+  background:#111827;
+}
+</style>
+</head>
+<body>
+
+<h1>🧤 Sinhala Sign Language Glove 3D Dashboard</h1>
+
+<div class="container">
+  <div class="card">
+    <h2>Detected Letter</h2>
+    <div id="gesture" class="gesture">-</div>
+    <p>Confidence: <span id="confidence" class="value">0</span>%</p>
+  </div>
+
+  <div class="card">
+    <h2>Finger Sensors</h2>
+    <canvas id="fingerChart" width="300" height="200"></canvas>
+  </div>
+
+  <div class="card">
+    <h2>3D Hand Movement</h2>
+    <div id="handContainer"></div>
+  </div>
+</div>
+
+<script>
+// ------------------ Finger Graph ------------------
+let lastGesture = "";
+
+const ctx = document.getElementById('fingerChart').getContext('2d');
+const fingerChart = new Chart(ctx, {
+  type: 'line',
+  data: {
+    labels: Array(30).fill(''),
+    datasets: [
+      {label:'Thumb', data:[], borderColor:'#f87171', fill:false},
+      {label:'Index', data:[], borderColor:'#facc15', fill:false},
+      {label:'Middle', data:[], borderColor:'#34d399', fill:false},
+      {label:'Ring', data:[], borderColor:'#60a5fa', fill:false},
+      {label:'Pinky', data:[], borderColor:'#a78bfa', fill:false},
+    ]
+  },
+  options:{
+    responsive:true,
+    animation:false,
+    scales:{y:{min:0,max:4500}}
+  }
+});
+
+// ------------------ Three.js 3D Hand ------------------
+const container = document.getElementById('handContainer');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x111827);
+
+const camera = new THREE.PerspectiveCamera(45, container.clientWidth/container.clientHeight, 0.1, 1000);
+camera.position.set(0, 0, 10);
+
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(container.clientWidth, container.clientHeight);
+container.appendChild(renderer.domElement);
+
+// Add lighting
+const ambient = new THREE.AmbientLight(0xffffff, 0.7);
+scene.add(ambient);
+const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+dirLight.position.set(5,5,5);
+scene.add(dirLight);
+
+// Hand model (simplified: 5 cylinders as fingers + palm)
+const material = new THREE.MeshStandardMaterial({color:0x22c55e, metalness:0.8, roughness:0.2});
+const palmGeometry = new THREE.BoxGeometry(3,1,0.5);
+const palm = new THREE.Mesh(palmGeometry, material);
+scene.add(palm);
+
+// Fingers
+const fingers = [];
+const fingerLengths = [1.5,1.6,1.7,1.5,1.4];
+for(let i=0;i<5;i++){
+  const geom = new THREE.CylinderGeometry(0.2,0.2,fingerLengths[i],16);
+  const mesh = new THREE.Mesh(geom, material);
+  mesh.position.set(-1 + i*0.5, 1, 0);
+  mesh.rotation.z = Math.PI/2;
+  scene.add(mesh);
+  fingers.push(mesh);
+}
+
+// Animation loop
+function animate(){
+  requestAnimationFrame(animate);
+  renderer.render(scene, camera);
+}
+animate();
+
+// ------------------ WebSocket ------------------
+const ws = new WebSocket("ws://192.168.4.1:81"); 
+
+ws.onopen = ()=> console.log("Connected to ESP32 WebSocket");
+ws.onmessage = event=>{
+  try{
+    const data = JSON.parse(event.data);
+
+    // Update gesture
+    document.getElementById("gesture").innerText = data.gesture;
+    document.getElementById("confidence").innerText = Math.round(data.confidence);
+
+    if(data.gesture !== lastGesture && data.confidence>70){
+      const speech = new SpeechSynthesisUtterance(data.gesture);
+      speech.lang="si-LK";
+      speechSynthesis.speak(speech);
+      lastGesture = data.gesture;
+    }
+
+    // Update finger graph
+    const fingersData = [data.thumb,data.index,data.middle,data.ring,data.pinky];
+    fingerChart.data.datasets.forEach((ds,i)=>{
+      ds.data.push(fingersData[i]);
+      if(ds.data.length>30) ds.data.shift();
+    });
+    fingerChart.update();
+
+    /* Update 3D hand rotation (simulate palm tilt)
+    const rotX = ((data.ax||0)/16000)*Math.PI/4; // -45° to 45°
+    const rotY = ((data.ay||0)/16000)*Math.PI/4;
+    palm.rotation.x = rotX;
+    palm.rotation.y = rotY;*/
+
+    // Update fingers bending based on sensor (simplified)
+    fingers.forEach((f,i)=>{
+      let bend = (fingersData[i]-2000)/2000; // normalize
+      bend = THREE.MathUtils.clamp(bend,0,1);
+      f.rotation.x = -bend*Math.PI/2;
+    });
+
+  } catch(e){console.error(e);}
+};
+</script>
+
+</body>
+</html>
